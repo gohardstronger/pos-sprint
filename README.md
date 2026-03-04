@@ -6,8 +6,17 @@ Batch: sprint-X26
 
 Материалы, правила и конфигурации участников спринта — промпты, skills, CLAUDE.md и другие артефакты Personal Operational System.
 
+## Practice
+
+Общие гайды и практики спринта.
+
+| Гайд | Описание |
+|------|----------|
+| [Naming Convention & Vault Structure](practice/naming-convention-vault-structure.md) | Формула имён файлов, структура Obsidian vault, теги, YAML frontmatter, интеграция с AI-агентами. [Веб-версия](practice/naming-convention-vault-structure.html) |
+| [Правила оркестрации моделей](practice/sergey-zinenko-orchestration-rules.md) | Таблица делегирования Opus/Sonnet/Haiku, автоэскалация, правила сессии |
+
 ## Участие
 
-Добавляйте свои материалы через PR. 
+Добавляйте свои материалы через PR.
 
 Формат имени файла: `имя-фамилия-тема.md`
