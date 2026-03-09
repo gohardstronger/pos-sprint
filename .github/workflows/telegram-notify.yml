@@ -1,0 +1,108 @@
+name: Telegram Notify
+
+on:
+  issues:
+    types: [opened, closed, reopened]
+  pull_request:
+    types: [opened, closed, ready_for_review]
+
+jobs:
+  notify:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Send Telegram notification
+        env:
+          TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
+          TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
+          TOPIC_ID: "1"
+        run: |
+          set -euo pipefail
+
+          EVENT="${{ github.event_name }}"
+          ACTION="${{ github.event.action }}"
+
+          # Determine emoji and header
+          EMOJI=""
+          HEADER=""
+
+          if [ "$EVENT" = "issues" ]; then
+            case "$ACTION" in
+              opened)   EMOJI="🆕"; HEADER="New Issue" ;;
+              closed)   EMOJI="✅"; HEADER="Issue Closed" ;;
+              reopened) EMOJI="🔄"; HEADER="Issue Reopened" ;;
+              *)        echo "Skipping action: $ACTION"; exit 0 ;;
+            esac
+            TITLE="${{ github.event.issue.title }}"
+            URL="${{ github.event.issue.html_url }}"
+            BODY="${{ github.event.issue.body }}"
+            LABELS=$(echo '${{ toJSON(github.event.issue.labels) }}' | jq -r '[.[].name] | join(", ")' 2>/dev/null || echo "")
+          elif [ "$EVENT" = "pull_request" ]; then
+            MERGED="${{ github.event.pull_request.merged }}"
+            case "$ACTION" in
+              opened)           EMOJI="🔀"; HEADER="New PR" ;;
+              closed)
+                if [ "$MERGED" = "true" ]; then
+                  EMOJI="🟣"; HEADER="PR Merged"
+                else
+                  EMOJI="❌"; HEADER="PR Closed"
+                fi
+                ;;
+              ready_for_review) EMOJI="👀"; HEADER="PR Ready for Review" ;;
+              *)                echo "Skipping action: $ACTION"; exit 0 ;;
+            esac
+            TITLE="${{ github.event.pull_request.title }}"
+            URL="${{ github.event.pull_request.html_url }}"
+            BODY="${{ github.event.pull_request.body }}"
+            LABELS=$(echo '${{ toJSON(github.event.pull_request.labels) }}' | jq -r '[.[].name] | join(", ")' 2>/dev/null || echo "")
+            BASE="${{ github.event.pull_request.base.ref }}"
+            HEAD="${{ github.event.pull_request.head.ref }}"
+            ADDITIONS="${{ github.event.pull_request.additions }}"
+            DELETIONS="${{ github.event.pull_request.deletions }}"
+          fi
+
+          # HTML-escape title and body
+          SAFE_TITLE=$(echo "$TITLE" | sed 's/&/\&amp;/g; s/</\&lt;/g; s/>/\&gt;/g; s/#//g')
+          REPO_SHORT="${{ github.repository }}"
+
+          # Build message
+          MSG="${EMOJI} <b>${HEADER}</b>"
+          MSG="${MSG}\n<a href=\"${URL}\">${SAFE_TITLE}</a>"
+          MSG="${MSG}\n\n📂 <code>${REPO_SHORT}</code>"
+
+          # Body preview (150 chars)
+          if [ -n "$BODY" ] && [ "$BODY" != "null" ]; then
+            SAFE_BODY=$(echo "$BODY" | head -c 150 | sed 's/&/\&amp;/g; s/</\&lt;/g; s/>/\&gt;/g; s/#//g' | tr '\n' ' ')
+            MSG="${MSG}\n📝 <i>${SAFE_BODY}</i>"
+          fi
+
+          # Labels
+          if [ -n "$LABELS" ]; then
+            MSG="${MSG}\n🏷 <i>${LABELS}</i>"
+          fi
+
+          # PR-specific fields
+          if [ "$EVENT" = "pull_request" ]; then
+            MSG="${MSG}\n🎯 <code>${BASE}</code> ← <code>${HEAD}</code>"
+            MSG="${MSG}\n📊 <code>+${ADDITIONS} −${DELETIONS}</code>"
+          fi
+
+          # Send via Telegram Bot API
+          PAYLOAD=$(jq -n \
+            --arg chat_id "$TELEGRAM_CHAT_ID" \
+            --arg text "$(echo -e "$MSG")" \
+            --arg parse_mode "HTML" \
+            --argjson message_thread_id "$TOPIC_ID" \
+            --argjson disable_web_page_preview true \
+            '{chat_id: $chat_id, text: $text, parse_mode: $parse_mode, message_thread_id: $message_thread_id, disable_web_page_preview: $disable_web_page_preview}')
+
+          RESPONSE=$(curl -s -X POST \
+            "https://api.telegram.org/bot${TELEGRAM_BOT_TOKEN}/sendMessage" \
+            -H "Content-Type: application/json" \
+            -d "$PAYLOAD")
+
+          OK=$(echo "$RESPONSE" | jq -r '.ok')
+          if [ "$OK" != "true" ]; then
+            echo "Telegram API error: $RESPONSE"
+            exit 1
+          fi
+          echo "Notification sent successfully"
