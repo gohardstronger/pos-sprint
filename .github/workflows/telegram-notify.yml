@@ -14,7 +14,8 @@ jobs:
         env:
           TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
           TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
-          TOPIC_ID: "1"
+          # Set to topic thread_id for a specific topic, or "0" for General
+          TOPIC_ID: "0"
         run: |
           set -euo pipefail
 
@@ -87,13 +88,22 @@ jobs:
           fi
 
           # Send via Telegram Bot API
-          PAYLOAD=$(jq -n \
-            --arg chat_id "$TELEGRAM_CHAT_ID" \
-            --arg text "$(echo -e "$MSG")" \
-            --arg parse_mode "HTML" \
-            --argjson message_thread_id "$TOPIC_ID" \
-            --argjson disable_web_page_preview true \
-            '{chat_id: $chat_id, text: $text, parse_mode: $parse_mode, message_thread_id: $message_thread_id, disable_web_page_preview: $disable_web_page_preview}')
+          if [ "$TOPIC_ID" = "0" ]; then
+            PAYLOAD=$(jq -n \
+              --arg chat_id "$TELEGRAM_CHAT_ID" \
+              --arg text "$(echo -e "$MSG")" \
+              --arg parse_mode "HTML" \
+              --argjson disable_web_page_preview true \
+              '{chat_id: $chat_id, text: $text, parse_mode: $parse_mode, disable_web_page_preview: $disable_web_page_preview}')
+          else
+            PAYLOAD=$(jq -n \
+              --arg chat_id "$TELEGRAM_CHAT_ID" \
+              --arg text "$(echo -e "$MSG")" \
+              --arg parse_mode "HTML" \
+              --argjson message_thread_id "$TOPIC_ID" \
+              --argjson disable_web_page_preview true \
+              '{chat_id: $chat_id, text: $text, parse_mode: $parse_mode, message_thread_id: $message_thread_id, disable_web_page_preview: $disable_web_page_preview}')
+          fi
 
           RESPONSE=$(curl -s -X POST \
             "https://api.telegram.org/bot${TELEGRAM_BOT_TOKEN}/sendMessage" \
